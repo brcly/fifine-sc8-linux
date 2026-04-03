@@ -199,9 +199,6 @@ Check the **PC/PS4 switch** on the rear — it must be set to **PC**.
 Both outputs need audio playing simultaneously from different apps.
 The knob mixes between the two streams.
 
-**SC8 isn't card 0** —
-Re-run the setup script — it auto-detects the card number.
-
 **Using PulseAudio instead of PipeWire** —
 The volume service still works. Skip the rename step. Use `pavucontrol`
 to manage outputs.
