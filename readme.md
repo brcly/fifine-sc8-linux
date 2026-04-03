@@ -146,7 +146,7 @@ wpctl status
 The whole point of the SC8's dual output is to send different apps to
 different outputs, then use the physical Game/Chat knob to balance them:
 
-- Set your **game or music player** output to **SC8 Game**
+- Set your **game or music player & default audio** output to **SC8 Game**
 - Set **Discord/voice chat** output to **SC8 Chat**
 - The **Game/Chat knob** on the SC8 balances between them in your headphones
 
