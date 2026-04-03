@@ -1,47 +1,42 @@
 # Fifine AmpliGame SC8 — Linux Setup Guide
 
-The Fifine SC8 works on Linux out of the box as a basic audio device, but
-the Game/Chat dual-output mixing feature requires some configuration.
-Without it, one or both outputs will be silent.
+The Fifine SC8's Game/Chat dual-output mixing doesn't work out of the
+box on Linux. One or both outputs will be silent, and the physical
+Game/Chat balance knob won't function. This guide fixes that.
 
-## The Problem
+## Prerequisites
 
-The SC8 presents two separate audio outputs (Chat and Game) and a
-microphone input over USB. Linux detects all of them correctly, but the
-device firmware initializes the output volumes to 0 (silent) randomly.
-PipeWire also resets them during startup. The physical Game/Chat balance
-knob only works when both outputs are active and audible.
+- Fifine SC8 connected via USB
+- **PC/PS4 switch** on the rear of the SC8 must be set to **PC**
+- A Linux distribution using PipeWire (Ubuntu 22.10+, Fedora 34+, Arch, etc.)
 
-## What You Need
+## Quick Setup
 
-- Fifine SC8 connected via USB (make sure PC/PS4 switch on rear is set to **PC**)
-- PipeWire (default on most modern distros)
-- A decent USB port — some ports cause audio dropouts; if you get issues, try a different port
-
-## Step 1: Verify the Device is Detected
+Save the script below as `setup-sc8.sh` and run it with `./setup-sc8.sh`:
 
 ```bash
-aplay -l | grep fifine
-```
+#!/bin/bash
+set -e
 
-You should see two playback devices:
+echo "=== Fifine SC8 Linux Setup ==="
+echo ""
 
-```
-card X: Chat [fifine SC8 Chat], device 0: USB Audio [USB Audio]
-card X: Chat [fifine SC8 Chat], device 1: USB Audio [USB Audio #1]
-```
+# --- Find the SC8 ---
+CARD=$(grep -l "fifine SC8" /proc/asound/card*/id 2>/dev/null | head -1 | grep -o 'card[0-9]*')
+if [ -z "$CARD" ]; then
+    echo "ERROR: Fifine SC8 not found. Is it plugged in with the switch set to PC?"
+    exit 1
+fi
+CARD_NUM=${CARD#card}
+CARD_ID=$(cat /proc/asound/$CARD/id)
+echo "Found SC8 as card $CARD_NUM ($CARD_ID)"
 
-If you only see one device, try unplugging and replugging.
-
-## Step 2: Fix the Volume Initialization
-
-Create a user systemd service that sets both output volumes after
-PipeWire starts:
-
-```bash
+# --- Volume fix service ---
+echo ""
+echo "Setting up volume initialization service..."
 mkdir -p ~/.config/systemd/user
 
-cat > ~/.config/systemd/user/fifine-sc8-volume.service << 'EOF'
+cat > ~/.config/systemd/user/fifine-sc8-volume.service << EOF
 [Unit]
 Description=Set Fifine SC8 volumes
 After=pipewire.service wireplumber.service
@@ -49,8 +44,8 @@ After=pipewire.service wireplumber.service
 [Service]
 Type=oneshot
 ExecStartPre=/bin/sleep 5
-ExecStart=/usr/bin/amixer -c X cset numid=3 4094,4094
-ExecStart=/usr/bin/amixer -c X cset numid=9 4094,4094
+ExecStart=/usr/bin/amixer -c $CARD_ID cset numid=3 4094,4094
+ExecStart=/usr/bin/amixer -c $CARD_ID cset numid=9 4094,4094
 RemainAfterExit=yes
 
 [Install]
@@ -59,25 +54,41 @@ EOF
 
 systemctl --user daemon-reload
 systemctl --user enable fifine-sc8-volume.service
-```
+echo "Volume service installed and enabled."
 
-**Note:** The SC8 isn't card X on your system, check `cat /proc/asound/cards`
-and replace `-c X` with your card number.
-
-## Step 3: Rename the Outputs (Optional but Recommended)
-
-By default PipeWire names both outputs "fifine SC8 Chat Pro" which is
-confusing. Create a WirePlumber config to give them proper names:
-
-```bash
+# --- WirePlumber rename config ---
+echo ""
+echo "Setting up output renaming..."
 mkdir -p ~/.config/wireplumber/wireplumber.conf.d
 
-cat > ~/.config/wireplumber/wireplumber.conf.d/51-fifine-sc8.conf << 'EOF'
+# Detect the actual node names from PipeWire
+SERIAL=$(pw-cli list-objects Node 2>/dev/null \
+    | grep "node.name.*fifine_SC8" \
+    | head -1 \
+    | grep -o 'fifine_SC8_Chat_[0-9]*' \
+    | head -1)
+
+if [ -z "$SERIAL" ]; then
+    # Fallback: try to get serial from udev
+    SERIAL=$(udevadm info /sys/class/sound/$CARD 2>/dev/null \
+        | grep ID_USB_SERIAL \
+        | head -1 \
+        | grep -o 'fifine_SC8_Chat_[0-9]*')
+fi
+
+if [ -z "$SERIAL" ]; then
+    echo "WARNING: Could not detect device serial. Skipping rename config."
+    echo "You can run this script again after a reboot."
+else
+    BASENAME="alsa_output.usb-MV-SILICON_${SERIAL}-00"
+    INPUTNAME="alsa_input.usb-MV-SILICON_${SERIAL}-00"
+
+    cat > ~/.config/wireplumber/wireplumber.conf.d/51-fifine-sc8.conf << EOF
 monitor.alsa.rules = [
   {
     matches = [
       {
-        node.name = "alsa_output.usb-MV-SILICON_fifine_SC8_Chat_20190808-00.pro-output-0"
+        node.name = "${BASENAME}.pro-output-0"
       }
     ]
     actions = {
@@ -90,7 +101,7 @@ monitor.alsa.rules = [
   {
     matches = [
       {
-        node.name = "alsa_output.usb-MV-SILICON_fifine_SC8_Chat_20190808-00.pro-output-1"
+        node.name = "${BASENAME}.pro-output-1"
       }
     ]
     actions = {
@@ -103,7 +114,7 @@ monitor.alsa.rules = [
   {
     matches = [
       {
-        node.name = "alsa_input.usb-MV-SILICON_fifine_SC8_Chat_20190808-00.pro-input-0"
+        node.name = "${INPUTNAME}.pro-input-0"
       }
     ]
     actions = {
@@ -115,78 +126,101 @@ monitor.alsa.rules = [
   }
 ]
 EOF
+    echo "Outputs renamed to SC8 Chat, SC8 Game, SC8 Mic."
+fi
+
+# --- Set volumes now ---
+echo ""
+echo "Setting volumes..."
+amixer -c "$CARD_ID" cset numid=3 4094,4094 > /dev/null 2>&1
+amixer -c "$CARD_ID" cset numid=9 4094,4094 > /dev/null 2>&1
+echo "Volumes set."
+
+# --- Done ---
+echo ""
+echo "=== Setup Complete ==="
+echo ""
+echo "Reboot to apply all changes, or restart PipeWire now:"
+echo "  systemctl --user restart pipewire wireplumber"
+echo ""
+echo "After reboot, set your apps like this:"
+echo "  Games/Music  -> SC8 Game"
+echo "  Discord/Chat -> SC8 Chat"
+echo "  The physical knob balances between them."
+echo ""
+echo "If audio cuts out, try a different USB port."
 ```
 
-**Note:** The serial number `20190808` in the node names may differ on
-your device. Check yours with:
+Then reboot.
+
+## How to Use the SC8 on Linux
+
+Once set up, route your apps to the correct output:
+
+| App Type | Output Device |
+|----------|---------------|
+| Games, music, YouTube | **SC8 Game** |
+| Discord, TeamSpeak, Zoom | **SC8 Chat** |
+
+You can route apps using:
+- **KDE Plasma**: Click the speaker icon in the system tray while audio
+  is playing, then change the output per app
+- **GNOME**: Settings > Sound, or install `pavucontrol`
+- **Any DE**: Install `pavucontrol` and use the Playback tab to move
+  running audio streams between outputs
+
+The physical **Game/Chat knob** balances between the two in your headphones.
+
+## Uninstall
 
 ```bash
-pw-cli list-objects Node | grep "node.name.*fifine"
+systemctl --user disable fifine-sc8-volume.service
+rm ~/.config/systemd/user/fifine-sc8-volume.service
+rm ~/.config/wireplumber/wireplumber.conf.d/51-fifine-sc8.conf
+systemctl --user daemon-reload
+systemctl --user restart pipewire wireplumber
 ```
-
-## Step 4: Reboot and Verify
-
-```bash
-sudo reboot
-```
-
-After reboot, check everything:
-
-```bash
-# Both volumes should be 4094
-amixer -c 0 cget numid=3
-amixer -c 0 cget numid=9
-
-# Should show SC8 Game, SC8 Chat, SC8 Mic
-wpctl status
-```
-
-## Step 5: Route Your Apps
-
-The whole point of the SC8's dual output is to send different apps to
-different outputs, then use the physical Game/Chat knob to balance them:
-
-- Set your **game or music player & default audio** output to **SC8 Game**
-- Set **Discord/voice chat** output to **SC8 Chat**
-- The **Game/Chat knob** on the SC8 balances between them in your headphones
-
-You can route apps in KDE Plasma's volume applet (click the speaker icon
-in the system tray while audio is playing), or install `pavucontrol` for
-a more detailed view.
 
 ## Troubleshooting
 
-**One output is silent after reboot:**
-The volume service may not have run. Check:
-```bash
-systemctl --user status fifine-sc8-volume.service
-```
-If it failed, manually set the volume:
-```bash
-amixer -c 0 cset numid=3 4094,4094
-amixer -c 0 cset numid=9 4094,4094
-```
+**One output is silent after reboot** —
+Run `systemctl --user status fifine-sc8-volume.service` to check the
+service ran. If it failed, set volumes manually:
+`amixer -c 0 cset numid=3 4094,4094 && amixer -c 0 cset numid=9 4094,4094`
 
-**Audio cuts out or both outputs die:**
-Try a different USB port. Some ports don't provide enough power or have
-flaky connections that cause the device to drop audio when both streams
-are active. Some USB ports with AMD Ryzen CPU's also have USB Audio 
-issues that are persistent on both Windows & Linux.
+**Audio cuts out when both outputs are active** —
+Try a different USB port. Some ports can't handle both audio streams.
+This also happens on Windows with bad ports.
 
-**Only one output device shows up:**
-Make sure the PC/PS4 switch on the rear of the SC8 is set to **PC**.
-PS4 mode only exposes one output. Ensure that the device is set to
-**Pro Audio** within Pavucontrol's configuration page.
+**Only one output shows up** —
+Check the **PC/PS4 switch** on the rear — it must be set to **PC**.
 
-**The knob doesn't do anything:**
-Both outputs need to be actively playing audio. The knob mixes between
-the two hardware streams — if only one is playing, turning the knob
-towards the silent one, will fade the audio to silence.
+**The Game/Chat knob doesn't do anything** —
+Both outputs need audio playing simultaneously from different apps.
+The knob mixes between the two streams.
 
-## What's Being Fixed Upstream
+**SC8 isn't card 0** —
+Re-run the setup script — it auto-detects the card number.
 
-A kernel patch is in progress to add a boot quirk that sets both output
-volumes automatically during device probe, eliminating the need for the
-systemd service. The patch modifies `sound/usb/quirks.c` to initialize
-Feature Unit 2 (Chat) and Feature Unit 10 (Game) volumes for device
-3142:0c88 at plug time.
+**Using PulseAudio instead of PipeWire** —
+The volume service still works. Skip the rename step. Use `pavucontrol`
+to manage outputs.
+
+## How It Works
+
+The SC8 has three USB Audio Control interfaces with two output endpoints
+(Chat and Game) and one input (Mic). The device firmware randomly
+initializes output volumes to 0 (silent), and PipeWire resets them
+during startup. The systemd service runs after PipeWire to set both
+volumes. The WirePlumber config renames the outputs from confusing
+default names to "SC8 Chat" and "SC8 Game".
+
+A kernel patch is in progress to handle volume initialization at the
+driver level, which will make the systemd service unnecessary.
+
+## Tested On
+
+- CachyOS (Arch-based), kernel 6.x, PipeWire 1.6.2, WirePlumber 0.5.14
+- USB Audio device ID: `3142:0c88`
+
+If you've tested on another distro, please report your results!
