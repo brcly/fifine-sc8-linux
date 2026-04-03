@@ -49,8 +49,8 @@ After=pipewire.service wireplumber.service
 [Service]
 Type=oneshot
 ExecStartPre=/bin/sleep 5
-ExecStart=/usr/bin/amixer -c 0 cset numid=3 4094,4094
-ExecStart=/usr/bin/amixer -c 0 cset numid=9 4094,4094
+ExecStart=/usr/bin/amixer -c X cset numid=3 4094,4094
+ExecStart=/usr/bin/amixer -c X cset numid=9 4094,4094
 RemainAfterExit=yes
 
 [Install]
@@ -61,8 +61,8 @@ systemctl --user daemon-reload
 systemctl --user enable fifine-sc8-volume.service
 ```
 
-**Note:** If the SC8 isn't card 0 on your system, check `cat /proc/asound/cards`
-and replace `-c 0` with your card number.
+**Note:** The SC8 isn't card X on your system, check `cat /proc/asound/cards`
+and replace `-c X` with your card number.
 
 ## Step 3: Rename the Outputs (Optional but Recommended)
 
@@ -170,16 +170,18 @@ amixer -c 0 cset numid=9 4094,4094
 **Audio cuts out or both outputs die:**
 Try a different USB port. Some ports don't provide enough power or have
 flaky connections that cause the device to drop audio when both streams
-are active.
+are active. Some USB ports with AMD Ryzen CPU's also have USB Audio 
+issues that are persistent on both Windows & Linux.
 
 **Only one output device shows up:**
 Make sure the PC/PS4 switch on the rear of the SC8 is set to **PC**.
-PS4 mode only exposes one output.
+PS4 mode only exposes one output. Ensure that the device is set to
+**Pro Audio** within Pavucontrol's configuration page.
 
 **The knob doesn't do anything:**
 Both outputs need to be actively playing audio. The knob mixes between
 the two hardware streams — if only one is playing, turning the knob
-towards the silent one will fade to silence.
+towards the silent one, will fade the audio to silence.
 
 ## What's Being Fixed Upstream
 
