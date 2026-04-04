@@ -12,7 +12,7 @@ Game/Chat balance knob won't function. This guide fixes that.
 
 ## Quick Setup
 
-Save the script below as `setup-sc8.sh` and run it with `./setup-sc8.sh`:
+Save the script below as `setup-sc8.sh` and run it with `bash setup-sc8.sh`:
 
 ```bash
 #!/bin/bash
