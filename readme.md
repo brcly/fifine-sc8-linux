@@ -7,6 +7,7 @@ If you prefer not to run scripts, here's how to set up the SC8 step by step.
 1. Plug in the SC8 via USB
 2. Set the **PC/PS4 switch** on the rear to **PC**
 3. Make sure `amixer` is installed (`alsa-utils` package)
+4. Ensure the SC8 is set to "Pro Audio" mode in the system audio settings. 
 
 ## Step 1: Find Your Card Number
 
