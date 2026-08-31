@@ -5,14 +5,14 @@ echo "=== Fifine SC8 Linux Setup ==="
 echo ""
 
 # --- Find the SC8 ---
-CARD=$(grep -l "fifine SC8" /proc/asound/card*/id 2>/dev/null | head -1 | grep -o 'card[0-9]*')
-if [ -z "$CARD" ]; then
+CARD_NUM=$(pactl -f json list cards 2>/dev/null | jq -r '.[] | select(.name | test("fifine_SC8"; "i")) | .properties["alsa.card"]' | head -1)
+if [ -z "$CARD_NUM" ]; then
     echo "ERROR: Fifine SC8 not found. Is it plugged in with the switch set to PC?"
     exit 1
 fi
-CARD_NUM=${CARD#card}
+CARD="card$CARD_NUM"
 CARD_ID=$(cat /proc/asound/$CARD/id)
-echo "Found SC8 as card $CARD_NUM ($CARD_ID)"
+echo "Found SC8 as card $CARD ($CARD_ID)"
 
 # --- Volume fix service ---
 echo ""
@@ -56,7 +56,7 @@ if [ -z "$SERIAL" ]; then
     SERIAL=$(udevadm info /sys/class/sound/$CARD 2>/dev/null \
         | grep ID_USB_SERIAL \
         | head -1 \
-        | grep -o 'fifine_SC8_Chat_[0-9]*')
+        | grep -o 'fifine_SC8_Chat_[0-9]*' || true)
 fi
 
 if [ -z "$SERIAL" ]; then
